@@ -33,7 +33,7 @@ export default function ScanScreen() {
   const [actionType, setActionType] = useState<"Check In" | "Check Out">(
     "Check In"
   );
-  const { logInventoryAction } = useInventory(); // Get logInventoryAction from context
+  const { items, logInventoryAction } = useInventory(); // Get items and logInventoryAction from context
   const [permission, requestPermission] = useCameraPermissions();
 
   // NOTE: Removed the useEffect dependency array to prevent rapid re-runs during navigation.
@@ -47,6 +47,15 @@ export default function ScanScreen() {
     if (!VALID_QR_CODES.has(normalized)) {
       alert(`Invalid QR code: "${normalized}".`);
       return;
+    }
+
+    // --- NEW: Stock validation before logging action ---
+    if (actionType === "Check Out") {
+      const item = items.find((i) => i.id === normalized);
+      if (!item || item.quantity <= 0) {
+        alert(`Action failed: Item '${item?.name || normalized}' is out of stock.`);
+        return; // Stop the process
+      }
     }
 
     // mark as scanned to debounce repeated camera events

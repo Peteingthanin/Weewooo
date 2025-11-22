@@ -65,6 +65,21 @@ CREATE TABLE notification_log (
         ON DELETE CASCADE
 );
 
+-- Export Log Table
+CREATE TABLE export_log (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    -- 'Excel' instead of 'XLSX' to be more user-friendly
+    format ENUM('CSV', 'Excel', 'PDF') NOT NULL,
+    status ENUM('Success', 'Failed') NOT NULL,
+    
+    -- Store a simple message, like an error or success note
+    details VARCHAR(255),
+    
+    -- The user who performed the export (if known)
+    user VARCHAR(100) DEFAULT 'System', 
+    
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
 -- -----------------------------------------------------------
 
 -- INSERT Data to each table

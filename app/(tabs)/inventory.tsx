@@ -6,10 +6,17 @@ import {
   ScrollView,
   TouchableOpacity,
   TextInput,
-  RefreshControl, // Import RefreshControl
+  RefreshControl,
+  Alert,
+  Platform, // --- NEW: Import Platform
 } from "react-native";
 import { Header } from "@/components/Header";
 import { useInventory, ItemCategory } from "@/contexts/InventoryContext";
+
+// --- NEW --- Imports for file system and sharing
+import { documentDirectory, downloadAsync } from "expo-file-system/legacy"; // For native
+import * as Sharing from "expo-sharing"; // For native
+import { API_BASE_URL } from "../../contexts/api";
 
 const CATEGORIES: Array<"All Categories" | ItemCategory> = [
   "All Categories",
@@ -40,7 +47,8 @@ export default function InventoryScreen() {
     logInventoryAction,
     recentSearches,
     addRecentSearch,
-    loadInitialData, // Get the data loading function
+    loadInitialData,
+    currentUser,
   } = useInventory();
   const [selectedCategory, setSelectedCategory] = useState<
     "All Categories" | ItemCategory
@@ -61,14 +69,66 @@ export default function InventoryScreen() {
   >("Expiry Status");
   const [showExpiringSoonDropdown, setShowExpiringSoonDropdown] =
     useState(false);
-  const [isRefreshing, setIsRefreshing] = useState(false); // State for the refresh control
+  const [isRefreshing, setIsRefreshing] = useState(false);
 
-  // Function to handle pull-to-refresh
   const onRefresh = React.useCallback(async () => {
     setIsRefreshing(true);
-    await loadInitialData(); // Reload all data from the server
+    await loadInitialData();
     setIsRefreshing(false);
   }, []);
+
+  // --- MODIFIED --- Export Function with Platform Check
+  const handleExport = async (format: "csv" | "excel" | "pdf") => {
+    console.log(`--- TAPPED EXPORT: ${format} ---`);
+
+    const fileExt = format === "excel" ? "xlsx" : format;
+    const fileName = `inventory.${fileExt}`;
+    // Include current user as query parameter
+    const downloadUrl = `${API_BASE_URL}/export/${format}?user=${encodeURIComponent(currentUser)}`;
+
+    if (Platform.OS === "web") {
+      // --- WEB-SPECIFIC LOGIC ---
+      // On web, we create a temporary link and "click" it
+      try {
+        const link = document.createElement("a");
+        link.href = downloadUrl;
+        link.setAttribute("download", fileName);
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        await loadInitialData();
+      } catch (error) {
+        console.error("Web Export Error:", error);
+        Alert.alert("Export Failed", "Could not download the file.");
+      }
+    } else {
+      // --- NATIVE (iOS / Android) LOGIC ---
+      const fileUri = documentDirectory + fileName;
+      try {
+        const { uri } = await downloadAsync(downloadUrl, fileUri);
+        console.log("File downloaded to:", uri);
+
+        if (!(await Sharing.isAvailableAsync())) {
+          Alert.alert("Error", "Sharing is not available on this platform.");
+          return;
+        }
+
+        await Sharing.shareAsync(uri, {
+          dialogTitle: "Share Inventory Report",
+          mimeType:
+            fileExt === "csv"
+              ? "text/csv"
+              : fileExt === "xlsx"
+              ? "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+              : "application/pdf",
+        });
+      } catch (error) {
+        console.error("Native Export Error:", error);
+        Alert.alert("Export Failed", "Could not generate or share the file.");
+      }
+    }
+  };
+  // --- END MODIFIED ---
 
   const filteredItems = items
     .filter(
@@ -81,7 +141,7 @@ export default function InventoryScreen() {
         searchQuery === "" ||
         (item.name?.toLowerCase() ?? "").includes(searchQuery.toLowerCase()) ||
         (item.id?.toLowerCase() ?? "").includes(searchQuery.toLowerCase()) ||
-        (item.location?.toLowerCase() ?? "").includes(searchQuery.toLowerCase()) // Search by location too
+        (item.location?.toLowerCase() ?? "").includes(searchQuery.toLowerCase())
     )
     .filter(
       (item) =>
@@ -91,38 +151,30 @@ export default function InventoryScreen() {
       if (selectedExpiringSoon === "Expiry Status") {
         return true;
       }
-
       const today = new Date();
-      today.setHours(0, 0, 0, 0); // Normalize today's date to start of day
+      today.setHours(0, 0, 0, 0);
       const expiryDate = new Date(item.expiryDate);
-      expiryDate.setHours(0, 0, 0, 0); // Normalize expiry date to start of day
-
+      expiryDate.setHours(0, 0, 0, 0);
       if (selectedExpiringSoon === "Expired") {
         return expiryDate < today;
       }
-
       if (selectedExpiringSoon === "Expiring Soon") {
         const thirtyDaysFromNow = new Date();
         thirtyDaysFromNow.setDate(today.getDate() + 30);
         thirtyDaysFromNow.setHours(0, 0, 0, 0);
         return expiryDate >= today && expiryDate <= thirtyDaysFromNow;
       }
-
       return true;
     });
 
-  // Helper function to get the quantity from state, defaulting to 1 if not set or invalid
   const getQuantityForUse = (itemId: string): number => {
     const q = parseInt(quantitiesToUse[itemId] || "1", 10);
     return isNaN(q) || q < 1 ? 1 : q;
   };
 
-  // Helper function to update the quantity for a specific item
   const handleQuantityChange = (itemId: string, value: string) => {
     setQuantitiesToUse((prev) => ({
       ...prev,
-      // Allow only non-zero digits. An empty string is allowed so the user can clear the input.
-      // This prevents '0' from being entered.
       [itemId]: value.replace(/[^1-9]/g, ""),
     }));
   };
@@ -329,6 +381,28 @@ export default function InventoryScreen() {
           </View>
         )}
 
+        {/* --- NEW --- Export Buttons */}
+        <View style={styles.exportContainer}>
+          <TouchableOpacity
+            style={[styles.exportButton, styles.exportButtonCsv]}
+            onPress={() => handleExport("csv")}
+          >
+            <Text style={styles.exportButtonText}>Export CSV</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.exportButton, styles.exportButtonExcel]}
+            onPress={() => handleExport("excel")}
+          >
+            <Text style={styles.exportButtonText}>Export Excel</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.exportButton, styles.exportButtonPdf]}
+            onPress={() => handleExport("pdf")}
+          >
+            <Text style={styles.exportButtonText}>Export PDF</Text>
+          </TouchableOpacity>
+        </View>
+
         <ScrollView
           style={styles.itemList}
           showsVerticalScrollIndicator={false}
@@ -354,7 +428,6 @@ export default function InventoryScreen() {
                       {item.id} • {item.category}
                     </Text>
                   </View>
-                  {/* Container for Status Badge and Quantity Input */}
                   <View style={styles.statusAndQuantityContainer}>
                     <View
                       style={[
@@ -366,7 +439,7 @@ export default function InventoryScreen() {
                       <Text
                         style={[
                           styles.statusText,
-                          item.status === "Low Stock" && { color: "#991B1B" }, // Override for low stock
+                          item.status === "Low Stock" && { color: "#991B1B" },
                         ]}
                       >
                         {item.status}
@@ -377,7 +450,7 @@ export default function InventoryScreen() {
                       onChangeText={(value) =>
                         handleQuantityChange(item.id, value)
                       }
-                      value={quantitiesToUse[item.id]} // Allow empty string for deletion
+                      value={quantitiesToUse[item.id]}
                       keyboardType="numeric"
                       placeholder="1"
                       maxLength={3}
@@ -417,7 +490,6 @@ export default function InventoryScreen() {
 
                 {/* Action Buttons */}
                 <View style={styles.itemActions}>
-                  {/* This empty view will push the button group to the right */}
                   <View style={{ flex: 1 }} />
                   <View style={styles.buttonGroup}>
                     <TouchableOpacity
@@ -445,12 +517,11 @@ export default function InventoryScreen() {
                     <TouchableOpacity
                       style={[
                         styles.actionButton,
-                        styles.transferButton, // New style for Transfer
+                        styles.transferButton,
                         (item.quantity < getQuantityForUse(item.id) ||
                           item.quantity <= 0) &&
                           styles.disabledButton,
                       ]}
-                      // Placeholder action for Transfer
                       onPress={() =>
                         logInventoryAction(
                           item.id,
@@ -469,14 +540,10 @@ export default function InventoryScreen() {
                       style={[
                         styles.actionButton,
                         styles.removeButton,
-                        item.quantity <= 0 && styles.disabledButton, // Disable if no items to remove
+                        item.quantity <= 0 && styles.disabledButton,
                       ]}
                       onPress={() =>
-                        logInventoryAction(
-                          item.id,
-                          "Remove All",
-                          item.quantity
-                        )
+                        logInventoryAction(item.id, "Remove All", item.quantity)
                       }
                       disabled={item.quantity <= 0}
                     >
@@ -523,6 +590,7 @@ const isExpiringSoon = (expiryDateString: string): boolean => {
   return expiryDate >= today && expiryDate <= thirtyDaysFromNow;
 };
 
+// --- Styles (Unchanged) ---
 const styles = StyleSheet.create({
   container: {
     flex: 1,
@@ -748,11 +816,11 @@ const styles = StyleSheet.create({
   statusAndQuantityContainer: {
     flexDirection: "column",
     alignItems: "flex-end",
-    gap: 8, // Space between status badge and quantity input
+    gap: 8,
   },
   quantityInput: {
-    width: 60, // Fixed width for the input
-    height: 36, // Fixed height
+    width: 60,
+    height: 36,
     borderWidth: 1,
     borderColor: "#E5E7EB",
     borderRadius: 8,
@@ -764,13 +832,13 @@ const styles = StyleSheet.create({
     color: "#1F2937",
   },
   transferButton: {
-    backgroundColor: "#4F7FFF", // Blue for "Transfer"
+    backgroundColor: "#4F7FFF",
   },
   useButton: {
-    backgroundColor: "#FB923C", // Orange for "Use"
+    backgroundColor: "#FB923C",
   },
   removeButton: {
-    backgroundColor: "#EF4444", // Red for "Remove"
+    backgroundColor: "#EF4444",
   },
   actionButtonText: {
     color: "#FFFFFF",
@@ -778,21 +846,21 @@ const styles = StyleSheet.create({
     fontWeight: "600",
   },
   disabledButton: {
-    backgroundColor: "#D1D5DB", // Gray when disabled
+    backgroundColor: "#D1D5DB",
   },
   notEnoughItemsText: {
-    color: "#EF4444", // Red text for warning
+    color: "#EF4444",
     fontSize: 13,
     marginTop: 8,
     textAlign: "center",
   },
   expiredText: {
-    color: "#EF4444", // Red color for expired items
+    color: "#EF4444",
     fontWeight: "700",
   },
   recentSearchesContainer: {
     position: "absolute",
-    top: 120, // Positioned below the search bar
+    top: 120,
     left: 20,
     right: 20,
     backgroundColor: "#FFFFFF",
@@ -800,8 +868,8 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: "#E5E7EB",
     zIndex: 1000,
-    elevation: 5, // for Android shadow
-    shadowColor: "#000", // for iOS shadow
+    elevation: 5,
+    shadowColor: "#000",
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.25,
     shadowRadius: 3.84,
@@ -824,5 +892,33 @@ const styles = StyleSheet.create({
   recentSearchText: {
     fontSize: 15,
     color: "#1F2937",
+  },
+  exportContainer: {
+    flexDirection: "row",
+    justifyContent: "space-around",
+    paddingHorizontal: 20,
+    marginBottom: 16,
+    gap: 10,
+  },
+  exportButton: {
+    flex: 1,
+    paddingVertical: 10,
+    borderRadius: 8,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  exportButtonCsv: {
+    backgroundColor: "#059669",
+  },
+  exportButtonExcel: {
+    backgroundColor: "#047857",
+  },
+  exportButtonPdf: {
+    backgroundColor: "#EF4444",
+  },
+  exportButtonText: {
+    color: "#FFFFFF",
+    fontSize: 14,
+    fontWeight: "600",
   },
 });

@@ -1,27 +1,43 @@
-import React, { useState } from "react";
+import React, { useState, useCallback } from "react";
 import {
   View,
   Text,
   StyleSheet,
   ScrollView,
-  TextInput,
+  RefreshControl,
   TouchableOpacity,
 } from "react-native";
+import {
+  useInventory,
+  HistoryItem,
+  ExportHistoryItem,
+} from "@/contexts/InventoryContext"; // Import new types
 import { Header } from "@/components/Header";
 import { useRouter } from "expo-router";
-import { IconSymbol } from "@/components/ui/IconSymbol";
-import { useInventory } from "@/contexts/InventoryContext"; // Import useInventory hook
+
+// --- NEW: Define which view is active ---
+type HistoryView = "actions" | "exports";
 
 export default function HistoryScreen() {
-  const { history } = useInventory(); // Get history from the context
-  const [searchQuery, setSearchQuery] = useState("");
-  const [sortBy, setSortBy] = useState("Date"); // 'Date' or 'Quantity'
-  const [filterAction, setFilterAction] = useState("All"); // 'All', 'Check In', 'Check Out'
-  const [filterCategory, setFilterCategory] = useState("All"); // 'All', 'Medication', 'Equipment', 'Supplies'
+  const { history, exportHistory, loadInitialData } = useInventory(); // Get new exportHistory
+  const [isRefreshing, setIsRefreshing] = useState(false);
+  const [view, setView] = useState<HistoryView>("actions"); // State for view
   const router = useRouter();
 
-  // Simple filtering and sorting logic for demonstration
-  const filteredAndSortedHistory = history // Use history from context
+  // Note: The original file's filtering/sorting logic is preserved for the 'actions' view.
+  const [searchQuery, setSearchQuery] = useState("");
+  const [sortBy, setSortBy] = useState("Date");
+  const [filterAction, setFilterAction] = useState("All");
+  const [filterCategory, setFilterCategory] = useState("All");
+
+  const onRefresh = useCallback(async () => {
+    setIsRefreshing(true);
+    await loadInitialData();
+    setIsRefreshing(false);
+  }, []);
+
+  // Filtering logic from original file, now only for 'actions' view
+  const filteredAndSortedActionHistory = history
     .filter((item) => {
       const matchesSearch =
         searchQuery === "" ||
@@ -36,156 +52,200 @@ export default function HistoryScreen() {
     })
     .sort((a, b) => {
       if (sortBy === "Date") {
-        return new Date(b.date).getTime() - new Date(a.date).getTime(); // Newest first
+        return new Date(b.date).getTime() - new Date(a.date).getTime();
       }
       if (sortBy === "Quantity") {
-        // Convert quantity to number, making Check Out negative for sorting
         const quantityA = Number(a.quantity);
         const effectiveQuantityA =
           a.action === "Check Out" ? -quantityA : quantityA;
-
         const quantityB = Number(b.quantity);
         const effectiveQuantityB =
           b.action === "Check Out" ? -quantityB : quantityB;
-
-        // Descending sort based on effective quantity (largest number, or largest Check In, first)
         return effectiveQuantityB - effectiveQuantityA;
       }
       return 0;
     });
 
+  // --- NEW: Component to render export history ---
+  const renderExportHistory = (item: ExportHistoryItem) => (
+    <View key={item.id} style={styles.card}>
+      <View style={styles.cardHeader}>
+        <Text style={styles.itemName}>{item.format} Export</Text>
+        <Text
+          style={[
+            styles.actionBadge,
+            item.status === "Success"
+              ? styles.statusSuccess
+              : styles.statusFailed,
+          ]}
+        >
+          {item.status}
+        </Text>
+      </View>
+      <View style={styles.cardBody}>
+        <Text style={styles.detailText}>Details: {item.details}</Text>
+        <Text style={styles.detailText}>User: {item.user}</Text>
+      </View>
+      <View style={styles.cardFooter}>
+        <Text style={styles.dateText}>{item.date}</Text>
+      </View>
+    </View>
+  );
+
+  // --- NEW: Component to render item action history (from original file) ---
+  const renderActionHistory = (item: HistoryItem) => (
+    <TouchableOpacity
+      key={item.id}
+      style={styles.card}
+      onPress={() => router.push(`/item-details?id=${item.itemId}`)}
+    >
+      <View style={styles.cardHeader}>
+        <Text style={styles.itemName}>{item.itemName}</Text>
+        <Text
+          style={[
+            styles.actionBadge,
+            (styles as any)[item.action.replace(" ", "")],
+          ]}
+        >
+          {item.action}
+        </Text>
+      </View>
+      <View style={styles.cardBody}>
+        <Text style={styles.detailText}>Quantity: {item.quantity}</Text>
+        <Text style={styles.detailText}>Case ID: {item.caseId}</Text>
+        <Text style={styles.detailText}>User: {item.user}</Text>
+      </View>
+      <View style={styles.cardFooter}>
+        <Text style={styles.dateText}>{item.date}</Text>
+      </View>
+    </TouchableOpacity>
+  );
+
   return (
     <View style={styles.container}>
       <Header />
       <View style={styles.content}>
-        <Text style={styles.pageTitle}>History & Report</Text>
+        <Text style={styles.title}>History & Report</Text>
 
-        {/* Search Bar */}
-        <View style={styles.searchContainer}>
-          <IconSymbol
-            name="magnifyingglass"
-            size={18}
-            color="#9CA3AF"
-            style={styles.searchIcon}
-          />
-          <TextInput
-            style={styles.searchInput}
-            placeholder="Search by date, case, or item..."
-            placeholderTextColor="#9CA3AF"
-            value={searchQuery}
-            onChangeText={setSearchQuery}
-            autoCapitalize="none"
-            autoCorrect={false}
-          />
-          {searchQuery !== "" && (
-            <TouchableOpacity
-              style={styles.clearButton}
-              onPress={() => setSearchQuery("")}
+        {/* --- NEW: Segmented Control --- */}
+        <View style={styles.segmentContainer}>
+          <TouchableOpacity
+            style={[
+              styles.segmentButton,
+              view === "actions" && styles.segmentButtonActive,
+            ]}
+            onPress={() => setView("actions")}
+          >
+            <Text
+              style={[
+                styles.segmentText,
+                view === "actions" && styles.segmentTextActive,
+              ]}
             >
-              <IconSymbol name="xmark.circle.fill" size={18} color="#9CA3AF" />
-            </TouchableOpacity>
-          )}
-        </View>
-
-        {/* Sort, Filter */}
-        <View style={styles.controlsRow}>
-          <TouchableOpacity
-            style={styles.controlButton}
-            onPress={() => {
-              const options = ["Date", "Quantity"];
-              const i = options.indexOf(sortBy);
-              setSortBy(options[(i + 1) % options.length]);
-            }}
-          >
-            <IconSymbol name="arrow.up.arrow.down" size={16} color="#4F7FFF" />
-            <Text style={styles.controlButtonText}>Sort by: {sortBy}</Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={styles.controlButton}
-            onPress={() => {
-              // Cycle through all available action categories
-              const actions = ["All", "Check In", "Check Out", "Use", "Transfer", "Remove All"];
-              const currentIndex = actions.indexOf(filterAction);
-              const nextIndex = (currentIndex + 1) % actions.length;
-              setFilterAction(actions[nextIndex]);
-            }}
-          >
-            <IconSymbol
-              name="line.horizontal.3.decrease.circle"
-              size={16}
-              color="#4F7FFF"
-            />
-            <Text style={styles.controlButtonText}>Action: {filterAction}</Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={styles.controlButton}
-            onPress={() => {
-              // Cycle through item categories: All -> Medication -> Equipment -> Supplies -> All
-              const categories = ["All", "Medication", "Equipment", "Supplies"];
-              const currentIndex = categories.indexOf(filterCategory);
-              const nextIndex = (currentIndex + 1) % categories.length;
-              setFilterCategory(categories[nextIndex]);
-            }}
-          >
-            <IconSymbol name="tag.fill" size={16} color="#4F7FFF" />
-            <Text style={styles.controlButtonText}>
-              Category: {filterCategory}
+              Item Actions
             </Text>
           </TouchableOpacity>
-          {/* Customize button is removed */}
+          <TouchableOpacity
+            style={[
+              styles.segmentButton,
+              view === "exports" && styles.segmentButtonActive,
+            ]}
+            onPress={() => setView("exports")}
+          >
+            <Text
+              style={[
+                styles.segmentText,
+                view === "exports" && styles.segmentTextActive,
+              ]}
+            >
+              Export History
+            </Text>
+          </TouchableOpacity>
         </View>
 
-        {/* Record Count */}
-        <Text style={styles.recordCount}>
-          {filteredAndSortedHistory.length} records found
-        </Text>
-
-        {/* History Log */}
         <ScrollView
-          style={styles.historyList}
-          showsVerticalScrollIndicator={false}
-          contentContainerStyle={styles.historyListContent}
+          style={styles.scrollView}
+          refreshControl={
+            <RefreshControl refreshing={isRefreshing} onRefresh={onRefresh} />
+          }
+          contentContainerStyle={{ paddingBottom: 100 }}
         >
-          {filteredAndSortedHistory.length === 0 ? (
-            <View style={styles.emptyState}>
-              <IconSymbol name="clock.fill" size={64} color="#D1D5DB" />
-              <Text style={styles.emptyStateText}>No activity found</Text>
-              <Text style={styles.emptyStateSubtext}>
-                Try adjusting your search or filters
-              </Text>
-            </View>
-          ) : (
-            filteredAndSortedHistory.map((item) => (
-              <TouchableOpacity
-                key={item.id}
-                style={styles.historyItemCard}
-                onPress={() =>
-                  router.push(`/item-details?id=${item.itemId}`)
-                }
-              >
-                <View style={styles.itemHeader}>
-                  <Text style={styles.itemName}>{item.itemName}</Text>
-                  <Text style={styles.itemQuantity}>
-                    {item.action === "Check In"
-                      ? `+${item.quantity}`
-                      : item.action === "Transfer"
-                      ? `→${item.quantity}`
-                      : item.action === "Use" || item.action === "Check Out" || item.action === "Remove All"
-                      ? `-${item.quantity}`
-                      : `${item.quantity}`
-                    }
+          {/* --- NEW: Conditional Rendering --- */}
+
+          {view === "actions" && (
+            <>
+              {/* --- Re-using filter controls from original file --- */}
+              <View style={styles.controlsRow}>
+                <TouchableOpacity
+                  style={styles.controlButton}
+                  onPress={() => {
+                    const options = ["Date", "Quantity"];
+                    const i = options.indexOf(sortBy);
+                    setSortBy(options[(i + 1) % options.length]);
+                  }}
+                >
+                  <Text style={styles.controlButtonText}>
+                    Sort by: {sortBy}
                   </Text>
-                </View>
-                <View style={styles.itemDetails}>
-                  <Text style={styles.itemDetailText}>Date: {item.date}</Text>
-                  <Text style={styles.itemDetailText}>
-                    Case ID: {item.caseId} • Item ID: {item.itemId}
-                  </Text><Text style={styles.itemDetailText}>
-                    Action: {item.action} by {item.user}
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={styles.controlButton}
+                  onPress={() => {
+                    const actions = [
+                      "All",
+                      "Check In",
+                      "Check Out",
+                      "Use",
+                      "Transfer",
+                      "Remove All",
+                    ];
+                    const currentIndex = actions.indexOf(filterAction);
+                    const nextIndex = (currentIndex + 1) % actions.length;
+                    setFilterAction(actions[nextIndex]);
+                  }}
+                >
+                  <Text style={styles.controlButtonText}>
+                    Action: {filterAction}
                   </Text>
-                </View>
-              </TouchableOpacity>
-            ))
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={styles.controlButton}
+                  onPress={() => {
+                    const categories = [
+                      "All",
+                      "Medication",
+                      "Equipment",
+                      "Supplies",
+                    ];
+                    const currentIndex = categories.indexOf(filterCategory);
+                    const nextIndex = (currentIndex + 1) % categories.length;
+                    setFilterCategory(categories[nextIndex]);
+                  }}
+                >
+                  <Text style={styles.controlButtonText}>
+                    Category: {filterCategory}
+                  </Text>
+                </TouchableOpacity>
+              </View>
+
+              {filteredAndSortedActionHistory.length > 0 ? (
+                filteredAndSortedActionHistory.map(renderActionHistory)
+              ) : (
+                <Text style={styles.emptyText}>
+                  No item action history found.
+                </Text>
+              )}
+            </>
+          )}
+
+          {view === "exports" && (
+            <>
+              {exportHistory.length > 0 ? (
+                exportHistory.map(renderExportHistory)
+              ) : (
+                <Text style={styles.emptyText}>No export history found.</Text>
+              )}
+            </>
           )}
         </ScrollView>
       </View>
@@ -193,52 +253,113 @@ export default function HistoryScreen() {
   );
 }
 
+// --- Styles (Many are new or modified) ---
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: "#F9FAFB", // Light background
-  },
-  content: {
-    flex: 1,
-    padding: 20,
-  },
-  pageTitle: {
-    fontSize: 24,
+  container: { flex: 1, backgroundColor: "#F9FAFB" },
+  content: { flex: 1, paddingTop: 20 },
+  title: {
+    fontSize: 28,
     fontWeight: "700",
-    color: "#1F2937",
+    paddingHorizontal: 20,
     marginBottom: 20,
-    textAlign: "left", // Center the title
   },
-  // Search Bar Styles (reused from inventory.tsx)
-  searchContainer: {
+  // --- NEW: Segmented Control Styles ---
+  segmentContainer: {
     flexDirection: "row",
-    alignItems: "center",
-    backgroundColor: "#FFFFFF",
+    marginHorizontal: 20,
+    marginBottom: 20,
+    backgroundColor: "#E5E7EB",
     borderRadius: 8,
+  },
+  segmentButton: {
+    flex: 1,
+    paddingVertical: 10,
+    borderRadius: 6,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  segmentButtonActive: {
+    backgroundColor: "#FFFFFF",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.1,
+    shadowRadius: 2,
+    elevation: 2,
+  },
+  segmentText: {
+    fontSize: 14,
+    fontWeight: "600",
+    color: "#6B7280",
+  },
+  segmentTextActive: {
+    color: "#4F7FFF",
+  },
+  // --- End New ---
+  scrollView: {
+    flex: 1,
+    paddingHorizontal: 20,
+  },
+  card: {
+    backgroundColor: "#FFFFFF",
+    borderRadius: 16,
+    padding: 20,
+    marginBottom: 12,
     borderWidth: 1,
     borderColor: "#E5E7EB",
-    paddingHorizontal: 12,
-    marginBottom: 16,
   },
-  searchIcon: {
-    marginRight: 8,
+  cardHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: 12,
   },
-  searchInput: {
-    flex: 1,
-    paddingVertical: 12,
-    fontSize: 15,
+  itemName: {
+    fontSize: 18,
+    fontWeight: "600",
     color: "#1F2937",
+    flex: 1,
+    marginRight: 8, // Ensure badge doesn't overlap
   },
-  clearButton: {
-    padding: 8,
+  actionBadge: {
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 12,
+    fontSize: 12,
+    fontWeight: "600",
+    overflow: "hidden", // for borderRadius
+    color: "#FFFFFF",
+    textAlign: "center",
   },
-  // Controls Row (Sort, Filter, Customize)
+  cardBody: {
+    marginBottom: 12,
+  },
+  detailText: {
+    fontSize: 14,
+    color: "#374151",
+    marginBottom: 4,
+  },
+  cardFooter: {
+    borderTopWidth: 1,
+    borderTopColor: "#F3F4F6",
+    paddingTop: 12,
+  },
+  dateText: {
+    fontSize: 12,
+    color: "#6B7280",
+  },
+  emptyText: {
+    textAlign: "center",
+    marginTop: 40,
+    fontSize: 16,
+    color: "#6B7280",
+  },
+  // Original filter controls
   controlsRow: {
     flexDirection: "row",
-    flexWrap: "wrap", // Allows buttons to wrap to next line if space is tight
-    justifyContent: "flex-start", // Align buttons to the left
+    flexWrap: "wrap",
+    justifyContent: "flex-start",
     marginBottom: 16,
-    gap: 8, // Space between buttons
+    gap: 8,
   },
   controlButton: {
     flexDirection: "row",
@@ -256,68 +377,12 @@ const styles = StyleSheet.create({
     fontWeight: "600",
     color: "#4F7FFF",
   },
-  // Record Count
-  recordCount: {
-    fontSize: 14,
-    color: "#6B7280",
-    marginBottom: 16,
-    fontWeight: "500",
-  },
-  // History List
-  historyList: {
-    flex: 1,
-  },
-  historyListContent: {
-    paddingBottom: 20, // Ensure last item isn't cut off by tab bar
-  },
-  historyItemCard: {
-    backgroundColor: "#FFFFFF",
-    borderRadius: 12,
-    padding: 16,
-    marginBottom: 12,
-    borderWidth: 1,
-    borderColor: "#E5E7EB",
-  },
-  itemHeader: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    marginBottom: 8,
-  },
-  itemName: {
-    fontSize: 17,
-    fontWeight: "600",
-    color: "#1F2937",
-    flex: 1, // Allow name to take up space
-  },
-  itemQuantity: {
-    fontSize: 17,
-    fontWeight: "700",
-    color: "#4F7FFF", // Example color for quantity
-  },
-  itemDetails: {
-    // Style for detail lines
-  },
-  itemDetailText: {
-    fontSize: 13,
-    color: "#6B7280",
-    marginBottom: 4,
-  },
-  // Empty State (reused from index.tsx)
-  emptyState: {
-    alignItems: "center",
-    justifyContent: "center",
-    paddingVertical: 60,
-  },
-  emptyStateText: {
-    fontSize: 18,
-    fontWeight: "600",
-    color: "#6B7280",
-    marginTop: 16,
-  },
-  emptyStateSubtext: {
-    fontSize: 14,
-    color: "#9CA3AF",
-    marginTop: 4,
-  },
+  // Action/Status colors
+  CheckIn: { backgroundColor: "#10B981" },
+  CheckOut: { backgroundColor: "#EF4444" },
+  Use: { backgroundColor: "#F59E0B" },
+  Transfer: { backgroundColor: "#6366F1" },
+  RemoveAll: { backgroundColor: "#374151" },
+  statusSuccess: { backgroundColor: "#10B981" }, // Green
+  statusFailed: { backgroundColor: "#EF4444" }, // Red
 });
