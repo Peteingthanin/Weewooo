@@ -584,6 +584,7 @@ app.get('/api/export/history', async (req, res) => {
 
 
 // --- Start Server ---
+if (require.main === module) {
 app.listen(PORT, '0.0.0.0', async () => {
     console.log(`\n🚀 Server running on port ${PORT}`);
 
@@ -622,4 +623,6 @@ app.listen(PORT, '0.0.0.0', async () => {
     } catch (error) {
         console.error('❌ Failed to auto-update contexts/api.ts. Please update it manually.', error);
     }
-});
+    
+});}
+module.exports = app;
