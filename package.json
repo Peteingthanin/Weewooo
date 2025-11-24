@@ -10,7 +10,6 @@
     "web": "expo start --web",
     "test": "jest --watchAll",
     "test:coverage": "jest --coverage",
-    "test:server": "npm test --prefix server",
     "lint": "expo lint"
   },
   "jest": {
