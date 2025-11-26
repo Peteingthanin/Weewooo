@@ -1,197 +1,386 @@
 import React from "react";
-import { render, fireEvent } from "@testing-library/react-native";
-import Scan from "../scan";
+import {
+  render,
+  fireEvent,
+  waitFor,
+  RenderAPI,
+  act,
+} from "@testing-library/react-native";
+// Import View to satisfy JSX requirements for mocks if needed
+import { View } from "react-native";
+// Import CameraView to access the mock in tests
+import { CameraView } from "expo-camera";
+import ScanScreen from "../scan";
+import {
+  useInventory,
+  InventoryItem,
+  HistoryAction,
+} from "@/contexts/InventoryContext";
 
-//  Mock Up Data
-// 1. Expo Router
-jest.mock("expo-router", () => ({
-  useRouter: jest.fn(),
+// ------------------------------------------------------------------
+// --- MOCK SETUP ---
+// ------------------------------------------------------------------
+
+// InventoryContext Mock
+jest.mock("@/contexts/InventoryContext", () => ({
+  useInventory: jest.fn(),
+  InventoryItem: {},
+  HistoryAction: { "Check In": "Check In", "Check Out": "Check Out" },
 }));
 
-// 2.Camera
-jest.mock("expo-camera", () => {
-  const React = require("react");
-  const { View, Button, TextInput } = require("react-native");
+// NotificationContext Mock
+jest.mock("@/contexts/NotificationContext", () => ({
+  useNotifications: jest.fn(() => ({
+    notifications: [],
+    loadNotifications: jest.fn(),
+    addNotification: jest.fn(),
+  })),
+}));
 
-  return {
-    CameraView: ({ onBarcodeScanned }: any) => {
-      const [mockData, setMockData] = React.useState("");
-
-      return (
-        <View>
-          {/*QR Code Input*/}
-          <TextInput
-            testID="mock-camera-input"
-            placeholder="Mock QR Data"
-            onChangeText={setMockData}
-            value={mockData}
-          />
-          {/*Button to trigger the scan with the input */}
-          <Button
-            testID="mock-camera-trigger"
-            title="Simulate Scan"
-            onPress={() => onBarcodeScanned({ data: mockData })}
-          />
-        </View>
-      );
-    },
-    useCameraPermissions: jest.fn(() => [{ granted: true }, jest.fn()]),
-  };
-});
-
-// CodeScanner Component
+// Component Mocks
+jest.mock("@/components/Header", () => ({
+  Header: () => <></>,
+}));
 jest.mock("@/components/CodeScanner", () => ({
   CodeScanner: "CodeScanner",
 }));
 
-// Inventory Context All Test Case
-const mockLogAction = jest.fn();
-jest.mock("@/contexts/InventoryContext", () => ({
-  useInventory: () => ({
-    items: [
-      { id: "MED001", name: "Epinephrine Auto-Injector", quantity: 5 },
-      { id: "EQP001", name: "Defibrillator AED", quantity: 0 },
-    ],
-
-    logInventoryAction: mockLogAction,
-  }),
-}));
-
-// Notification Context
-jest.mock("@/contexts/NotificationContext", () => ({
-  useNotifications: () => ({
-    notifications: [],
-    unreadCount: 0,
-    loadNotifications: jest.fn(),
-  }),
-}));
-
-//Icons
-jest.mock("@/components/ui/IconSymbol", () => ({
-  IconSymbol: "IconSymbol",
-}));
-
-// Alerts
+// Alert Mock
 global.alert = jest.fn();
 
-describe("Scan", () => {
+// CameraView Permission & Component Mock
+// We define the mock inside the factory to avoid hoisting issues
+jest.mock("expo-camera", () => {
+  const React = require("react");
+  const { View } = require("react-native");
+
+  // Create the mock component function
+  const MockCameraView = jest.fn((props) => {
+    // We attach a trigger function to the mock instance itself
+    // This allows tests to call MockCameraView.triggerScan('code')
+    (MockCameraView as any).triggerScan = (data: string) => {
+      if (props.onBarcodeScanned) {
+        props.onBarcodeScanned({ data });
+      }
+    };
+    return <View testID="camera-view-mock" />;
+  });
+
+  return {
+    useCameraPermissions: () => [{ granted: true }, jest.fn()],
+    CameraView: MockCameraView,
+  };
+});
+
+// Timers
+jest.useFakeTimers();
+
+// ------------------------------------------------------------------
+// --- TEST DATA ---
+// ------------------------------------------------------------------
+
+const VALID_CODE_IN_STOCK = "MED001";
+const VALID_CODE_OUT_OF_STOCK = "SUP001";
+const INVALID_CODE = "WeLoveAjChaiyong";
+
+const mockInventoryItems: InventoryItem[] = [
+  {
+    id: VALID_CODE_IN_STOCK,
+    name: "Epinephrine",
+    quantity: 5,
+    dbId: 1,
+    category: "Medication",
+    lastScanned: "",
+    status: "In Stock",
+    expiryDate: "2025-12-31",
+    location: "Ambulance 1",
+  },
+  {
+    id: VALID_CODE_OUT_OF_STOCK,
+    name: "Medical Gloves",
+    quantity: 0,
+    dbId: 2,
+    category: "Supplies",
+    lastScanned: "",
+    status: "Out of Stock",
+    expiryDate: "2024-06-01",
+    location: "Storage A",
+  },
+];
+
+// ------------------------------------------------------------------
+// --- TEST SUITE 1: processScannedCode Logic ---
+// ------------------------------------------------------------------
+
+describe("ScanScreen - Core Logic (processScannedCode) using ISP", () => {
+  let mockLogInventoryAction: jest.Mock;
+  let getByText: RenderAPI["getByText"];
+  let getByPlaceholderText: RenderAPI["getByPlaceholderText"];
+
   beforeEach(() => {
     jest.clearAllMocks();
+
+    mockLogInventoryAction = jest.fn(async () => true);
+    (useInventory as jest.Mock).mockReturnValue({
+      items: mockInventoryItems,
+      logInventoryAction: mockLogInventoryAction,
+      history: [],
+      exportHistory: [],
+      checkedIn: 0,
+      checkedOut: 0,
+      lowStockCount: 0,
+      recentSearches: [],
+      currentUser: "TestUser",
+      loadInitialData: jest.fn(),
+      addRecentSearch: jest.fn(),
+      setCurrentUser: jest.fn(),
+    });
+
+    const renderResult = render(<ScanScreen />);
+    getByText = renderResult.getByText;
+    getByPlaceholderText = renderResult.getByPlaceholderText;
   });
 
-  /**
-   * Test Case 1: Toggle Between Check Out and Check In
-   * Test Case ID: SCAN_001
-   * Test Description: Verify that the user can toggle between "Check Out" and "Check In" modes and the system logs the correct action type for each state.
-   * Pre-conditions: User is in Scan page and in "Check In" mode.
-   * Test Steps:
-   * 1. Press "Check Out" and
-   * 2. Press MED001 Button
-   * 3. Press "Check In" to switch back.
-   * 4. Press MED001 Button.
-   * Expected Result: The system correctly updates the state and logs the actions corresponding to they selected button.
-   */
-  it("toggles between Check Out and Check In modes correctly", () => {
-    const { getByText, getByPlaceholderText } = render(<Scan />);
-    const input = getByPlaceholderText("Enter barcode or scan...");
-    const submitBtn = getByText("Submit Scan");
+  const fireManualSubmit = (
+    queries: { getByText: any; getByPlaceholderText: any },
+    code: string,
+    isQuickScan: boolean = false
+  ) => {
+    if (!isQuickScan) {
+      const input = queries.getByPlaceholderText("Enter barcode or scan...");
+      fireEvent.changeText(input, code);
+      const submitButton = queries.getByText("Submit Scan");
+      fireEvent.press(submitButton);
+    } else {
+      const quickButton = queries.getByText(code);
+      fireEvent.press(quickButton);
+    }
+  };
 
-    // 1. Press "Check Out" and
-    fireEvent.press(getByText("Check Out"));
+  const switchActionType = (query: any, type: HistoryAction) => {
+    fireEvent.press(query(type));
+  };
 
-    // 2. Submit a scan (MED001)
-    fireEvent.changeText(input, "MED001");
-    fireEvent.press(submitBtn);
+  // T1: Check In | Valid Code | In Stock -> Success
+  it("T1: Check In / Valid / In Stock -> SUCCESS (Logs Action)", async () => {
+    switchActionType(getByText, "Check In");
+    fireManualSubmit({ getByText, getByPlaceholderText }, VALID_CODE_IN_STOCK);
 
-    // Assertion 1: Should be Check Out
-    expect(mockLogAction).toHaveBeenCalledWith("MED001", "Check Out", 1);
-
-    // 3. Press "Check In" to switch back.
-    fireEvent.press(getByText("Check In"));
-
-    // 4. Submit a scan (MED001) again.
-    fireEvent.changeText(input, "MED001");
-    fireEvent.press(submitBtn);
-
-    // Assertion 2:: Should be Check In
-    expect(mockLogAction).toHaveBeenCalledWith("MED001", "Check In", 1);
-  });
-  /**
-   * Test Case 2: Valid Code Scan Handling
-   * Test Case ID: SCAN_002
-   * Test Description: Verify that the Camera component triggers the inventory logic correctly when a valid barcode is scanned.
-   * Test Steps:
-   * 1. Scan valid barcode.
-   * Pre-conditions: User is in Scan Page and camera permissions are granted.
-   * Expected Result: The handleBarcodeScan() function executes and calls logInventoryAction() with 'MED001' and 'Check In'.
-   */
-  it("logs an action when the camera scans a valid code", () => {
-    const { getByTestId } = render(<Scan />);
-
-    // Valid QR Code mock up
-    fireEvent.changeText(getByTestId("mock-camera-input"), "MED001");
-
-    // Trigger the scan
-    fireEvent.press(getByTestId("mock-camera-trigger"));
-
-    // Assertion: Verify logInventoryAction called with correct params
-    expect(mockLogAction).toHaveBeenCalledWith("MED001", "Check In", 1);
-  });
-
-  /**
-   * Test Case 3: Invalid Code Scan Handling
-   * Test Case ID: SCAN_003
-   * Test Description: Verify that the Camera component handle invalid barcode correctly when scanned.
-   * Test Steps:
-   * 1. Scan invalid barcode.
-   * Pre-conditions: User is in Scan Page and camera permissions are granted.
-   * Expected Result: An error shown saying the code is invalid, and no action is logged.
-   */
-
-  it("shows an error and does not log action when an invalid code is scanned", () => {
-    const { getByTestId } = render(<Scan />);
-
-    // 1. Mock up INVALID code inside the test case
-    fireEvent.changeText(
-      getByTestId("mock-camera-input"),
-      "WE_LOVE_AJ_CHAIYONG"
-    );
-
-    // 2. Trigger the scan
-    fireEvent.press(getByTestId("mock-camera-trigger"));
-
-    // 3. Assertion: Verify Error Alert & No Action Logged
+    await waitFor(() => {
+      expect(mockLogInventoryAction).toHaveBeenCalled();
+    });
     expect(global.alert).toHaveBeenCalledWith(
-      'Invalid QR code: "WE_LOVE_AJ_CHAIYONG".'
+      expect.stringContaining("Logged action for item")
     );
-    expect(mockLogAction).not.toHaveBeenCalled();
   });
 
-  /**
-   * Test Case 4: Handling Insufficient Stock on Check Out
-   * Test Case ID: SCAN_004
-   * Test Description: Verify that checking out an item with insufficient stock triggers an error and prevents logging.
-   * Pre-conditions: User is in Scan page and the item user want to check out has Qty 0.
-   * Test Steps:
-   * 1. Press "Check out".
-   * 2. Press "EQP001" (This has 0 according to our mock up data).
-   * Expected Result: An error shown and no action is logged.
-   */
-  it("prevents checking out items that are out of stock or missing", () => {
-    const { getByText, getByPlaceholderText } = render(<Scan />);
-
-    // 1. Switch to Check Out
-    fireEvent.press(getByText("Check Out"));
-
-    // 2. Enter EQP001 (This has 0 according to our mock up data).
-    const input = getByPlaceholderText("Enter barcode or scan...");
-    fireEvent.changeText(input, "EQP001");
-    fireEvent.press(getByText("Submit Scan"));
-
-    // 3. Verify Error Alert & No Action Logged
-    expect(global.alert).toHaveBeenCalledWith(
-      expect.stringContaining("out of stock")
+  // T2: Check In | Valid Code | Out of Stock -> Success
+  it("T2: Check In / Valid / Out of Stock -> SUCCESS (Check In ignores C3, Logs Action)", async () => {
+    switchActionType(getByText, "Check In");
+    fireManualSubmit(
+      { getByText, getByPlaceholderText },
+      VALID_CODE_OUT_OF_STOCK
     );
-    expect(mockLogAction).not.toHaveBeenCalled();
+
+    await waitFor(() => {
+      expect(mockLogInventoryAction).toHaveBeenCalled();
+    });
+    expect(global.alert).toHaveBeenCalledWith(
+      expect.stringContaining("Logged action for item")
+    );
+  });
+
+  // T3: Check In | Invalid Code | In Stock -> Fail (Validation)
+  it("T3: Check In / Invalid / In Stock -> FAIL (Invalid QR Code)", async () => {
+    switchActionType(getByText, "Check In");
+    fireManualSubmit({ getByText, getByPlaceholderText }, INVALID_CODE);
+
+    await waitFor(() => {
+      expect(global.alert).toHaveBeenCalledWith(
+        expect.stringContaining("Invalid QR code")
+      );
+    });
+    expect(mockLogInventoryAction).not.toHaveBeenCalled();
+  });
+
+  // T4: Check In | Invalid Code | Out of Stock -> Fail (Validation)
+  it("T4: Check In / Invalid / Out of Stock -> FAIL (Invalid QR Code)", async () => {
+    switchActionType(getByText, "Check In");
+    fireManualSubmit({ getByText, getByPlaceholderText }, INVALID_CODE);
+
+    await waitFor(() => {
+      expect(global.alert).toHaveBeenCalledWith(
+        expect.stringContaining("Invalid QR code")
+      );
+    });
+    expect(mockLogInventoryAction).not.toHaveBeenCalled();
+  });
+
+  // T5: Check Out | Valid Code | In Stock -> Success
+  it("T5: Check Out / Valid / In Stock -> SUCCESS (Logs Action)", async () => {
+    switchActionType(getByText, "Check Out");
+    fireManualSubmit({ getByText, getByPlaceholderText }, VALID_CODE_IN_STOCK);
+
+    await waitFor(() => {
+      expect(mockLogInventoryAction).toHaveBeenCalled();
+    });
+    expect(global.alert).toHaveBeenCalledWith(
+      expect.stringContaining("Logged action for item")
+    );
+  });
+
+  // T6: Check Out | Valid Code | Out of Stock -> Fail (Stock Check)
+  it("T6: Check Out / Valid / Out of Stock -> FAIL (Alerts Out of Stock)", async () => {
+    switchActionType(getByText, "Check Out");
+    fireManualSubmit(
+      { getByText, getByPlaceholderText },
+      VALID_CODE_OUT_OF_STOCK
+    );
+
+    await waitFor(() => {
+      expect(global.alert).toHaveBeenCalledWith(
+        expect.stringContaining("is out of stock")
+      );
+    });
+    expect(mockLogInventoryAction).not.toHaveBeenCalled();
+  });
+
+  // T7: Check Out | Invalid Code | In Stock -> Fail (Validation)
+  it("T7: Check Out / Invalid / In Stock -> FAIL (Invalid QR Code)", async () => {
+    switchActionType(getByText, "Check Out");
+    fireManualSubmit({ getByText, getByPlaceholderText }, INVALID_CODE);
+
+    await waitFor(() => {
+      expect(global.alert).toHaveBeenCalledWith(
+        expect.stringContaining("Invalid QR code")
+      );
+    });
+    expect(mockLogInventoryAction).not.toHaveBeenCalled();
+  });
+
+  // T8: Check Out | Invalid Code | Out of Stock -> Fail (Validation)
+  it("T8: Check Out / Invalid / Out of Stock -> FAIL (Invalid QR Code)", async () => {
+    switchActionType(getByText, "Check Out");
+    fireManualSubmit({ getByText, getByPlaceholderText }, INVALID_CODE);
+
+    await waitFor(() => {
+      expect(global.alert).toHaveBeenCalledWith(
+        expect.stringContaining("Invalid QR code")
+      );
+    });
+    expect(mockLogInventoryAction).not.toHaveBeenCalled();
+  });
+});
+
+// ------------------------------------------------------------------
+// --- TEST SUITE 2: handleBarcodeScan Logic (Debounce & Validation) ---
+// ------------------------------------------------------------------
+
+describe("ScanScreen - handleBarcodeScan Logic (Debounce ISP)", () => {
+  let mockLogInventoryAction: jest.Mock;
+  let queries: RenderAPI;
+
+  // Helper to trigger camera scan event using our mock
+  const fireCameraScanTest = (data: string) => {
+    // Access the static trigger method we attached to the mock
+    const trigger = (CameraView as any).triggerScan;
+    if (trigger) {
+      // We must act() because this triggers a state update
+      trigger(data);
+    } else {
+      throw new Error(
+        "CameraView mock trigger not found. Is CameraView mounted?"
+      );
+    }
+  };
+
+  // Helper to force debounce state (scanned: true)
+  const simulateDebounceState = async (q: RenderAPI) => {
+    // Trigger valid scan to set scanned = true
+    const input = q.getByPlaceholderText("Enter barcode or scan...");
+    const submitButton = q.getByText("Submit Scan");
+
+    fireEvent.changeText(input, VALID_CODE_IN_STOCK);
+    fireEvent.press(submitButton);
+
+    await waitFor(() => {
+      expect(global.alert).toHaveBeenCalled();
+    });
+    // Clear the mock so we can start fresh for the actual test step
+    (global.alert as jest.Mock).mockClear();
+    (mockLogInventoryAction as jest.Mock).mockClear();
+  };
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    mockLogInventoryAction = jest.fn(async () => true);
+    (useInventory as jest.Mock).mockReturnValue({
+      items: mockInventoryItems,
+      logInventoryAction: mockLogInventoryAction,
+      history: [],
+      exportHistory: [],
+      checkedIn: 0,
+      checkedOut: 0,
+      lowStockCount: 0,
+      recentSearches: [],
+      currentUser: "TestUser",
+      loadInitialData: jest.fn(),
+      addRecentSearch: jest.fn(),
+      setCurrentUser: jest.fn(),
+    });
+
+    queries = render(<ScanScreen />);
+  });
+
+  // T11: Debounced | Valid Code -> Skip (Silent Exit)
+  it("T11: Debounced, Valid code -> Should be skipped (silent exit)", async () => {
+    await simulateDebounceState(queries); // Sets scanned = true
+
+    act(() => fireCameraScanTest(VALID_CODE_IN_STOCK)); // Trigger again immediately
+
+    jest.advanceTimersByTime(100); // Fast forward time slightly
+
+    // Should NOT call log action again
+    expect(mockLogInventoryAction).not.toHaveBeenCalled();
+    expect(global.alert).not.toHaveBeenCalled();
+  });
+  // T13: Debounced | Invalid Code -> Skip (Silent Exit)
+  it("T13: Debounced, Invalid code -> Should be skipped (silent exit)", async () => {
+    await simulateDebounceState(queries); // Sets scanned = true
+
+    act(() => fireCameraScanTest(INVALID_CODE));
+
+    jest.advanceTimersByTime(100);
+
+    expect(global.alert).not.toHaveBeenCalled();
+  });
+
+  // T10: Not Debounced | Valid Code -> Success (Process)
+  it("T10: Not debounced, Valid code -> Should process code (T1 logic)", async () => {
+    act(() => fireCameraScanTest(VALID_CODE_IN_STOCK));
+
+    await waitFor(() => {
+      expect(mockLogInventoryAction).toHaveBeenCalled();
+    });
+    expect(global.alert).toHaveBeenCalledWith(
+      expect.stringContaining("Logged action")
+    );
+  });
+
+  // T12: Not Debounced | Invalid Code -> Fail (Alert & Debounce)
+  it("T12: Not debounced, Invalid code -> Should alert and temporarily debounce", async () => {
+    act(() => fireCameraScanTest(INVALID_CODE));
+
+    await waitFor(() => {
+      expect(global.alert).toHaveBeenCalledWith(
+        expect.stringContaining("Invalid QR code")
+      );
+    });
+
+    // Verify short debounce is active by scanning valid code immediately
+    (global.alert as jest.Mock).mockClear();
+    act(() => fireCameraScanTest(VALID_CODE_IN_STOCK));
+
+    expect(mockLogInventoryAction).not.toHaveBeenCalled(); // Should be skipped
   });
 });

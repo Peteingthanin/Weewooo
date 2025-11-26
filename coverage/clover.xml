@@ -1,85 +1,80 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<coverage generated="1763975524323" clover="3.2.0">
-  <project timestamp="1763975524323" name="All files">
-    <metrics statements="68" coveredstatements="54" conditionals="44" coveredconditionals="30" methods="17" coveredmethods="12" elements="129" coveredelements="96" complexity="0" loc="68" ncloc="68" packages="2" files="2" classes="2"/>
+<coverage generated="1764072585565" clover="3.2.0">
+  <project timestamp="1764072585565" name="All files">
+    <metrics statements="63" coveredstatements="53" conditionals="42" coveredconditionals="32" methods="16" coveredmethods="12" elements="121" coveredelements="97" complexity="0" loc="63" ncloc="63" packages="2" files="2" classes="2"/>
     <package name="app.(tabs)">
-      <metrics statements="62" coveredstatements="50" conditionals="40" coveredconditionals="29" methods="15" coveredmethods="11"/>
+      <metrics statements="62" coveredstatements="52" conditionals="40" coveredconditionals="31" methods="15" coveredmethods="11"/>
       <file name="scan.tsx" path="C:\Users\mroei\Documents\GitHub\MyWeewooo\app\(tabs)\scan.tsx">
-        <metrics statements="62" coveredstatements="50" conditionals="40" coveredconditionals="29" methods="15" coveredmethods="11"/>
+        <metrics statements="62" coveredstatements="52" conditionals="40" coveredconditionals="31" methods="15" coveredmethods="11"/>
         <line num="18" count="1" type="stmt"/>
         <line num="28" count="1" type="stmt"/>
-        <line num="31" count="13" type="stmt"/>
-        <line num="32" count="13" type="stmt"/>
-        <line num="33" count="13" type="stmt"/>
-        <line num="36" count="13" type="stmt"/>
-        <line num="37" count="13" type="stmt"/>
-        <line num="42" count="13" type="stmt"/>
-        <line num="44" count="4" type="cond" truecount="1" falsecount="1"/>
-        <line num="45" count="4" type="cond" truecount="1" falsecount="1"/>
-        <line num="47" count="4" type="cond" truecount="1" falsecount="1"/>
+        <line num="31" count="33" type="stmt"/>
+        <line num="32" count="33" type="stmt"/>
+        <line num="33" count="33" type="stmt"/>
+        <line num="36" count="33" type="stmt"/>
+        <line num="37" count="33" type="stmt"/>
+        <line num="42" count="33" type="stmt"/>
+        <line num="44" count="7" type="cond" truecount="1" falsecount="1"/>
+        <line num="45" count="7" type="cond" truecount="1" falsecount="1"/>
+        <line num="47" count="7" type="cond" truecount="1" falsecount="1"/>
         <line num="48" count="0" type="stmt"/>
         <line num="49" count="0" type="stmt"/>
-        <line num="53" count="4" type="cond" truecount="2" falsecount="0"/>
+        <line num="53" count="7" type="cond" truecount="2" falsecount="0"/>
         <line num="54" count="3" type="stmt"/>
         <line num="55" count="2" type="cond" truecount="4" falsecount="0"/>
         <line num="56" count="1" type="cond" truecount="1" falsecount="1"/>
         <line num="57" count="1" type="stmt"/>
-        <line num="62" count="3" type="stmt"/>
-        <line num="63" count="3" type="stmt"/>
-        <line num="66" count="3" type="stmt"/>
-        <line num="68" count="3" type="stmt"/>
+        <line num="62" count="6" type="stmt"/>
+        <line num="63" count="6" type="stmt"/>
+        <line num="66" count="6" type="stmt"/>
+        <line num="68" count="6" type="stmt"/>
         <line num="71" count="0" type="stmt"/>
-        <line num="74" count="3" type="stmt"/>
-        <line num="77" count="3" type="stmt"/>
+        <line num="74" count="6" type="stmt"/>
+        <line num="77" count="6" type="stmt"/>
         <line num="78" count="0" type="stmt"/>
         <line num="79" count="0" type="stmt"/>
-        <line num="83" count="13" type="stmt"/>
-        <line num="84" count="2" type="cond" truecount="1" falsecount="1"/>
-        <line num="85" count="2" type="cond" truecount="1" falsecount="1"/>
+        <line num="83" count="33" type="stmt"/>
+        <line num="84" count="5" type="cond" truecount="1" falsecount="1"/>
+        <line num="85" count="5" type="cond" truecount="2" falsecount="0"/>
         <line num="87" count="2" type="cond" truecount="2" falsecount="0"/>
         <line num="89" count="1" type="stmt"/>
         <line num="90" count="1" type="stmt"/>
         <line num="91" count="1" type="stmt"/>
         <line num="92" count="1" type="stmt"/>
         <line num="96" count="1" type="stmt"/>
-        <line num="100" count="13" type="stmt"/>
-        <line num="101" count="3" type="stmt"/>
-        <line num="102" count="3" type="cond" truecount="1" falsecount="1"/>
-        <line num="104" count="3" type="cond" truecount="1" falsecount="1"/>
-        <line num="105" count="0" type="stmt"/>
-        <line num="106" count="0" type="stmt"/>
-        <line num="110" count="3" type="stmt"/>
-        <line num="113" count="13" type="stmt"/>
+        <line num="100" count="33" type="stmt"/>
+        <line num="101" count="10" type="stmt"/>
+        <line num="102" count="10" type="cond" truecount="1" falsecount="1"/>
+        <line num="104" count="10" type="cond" truecount="2" falsecount="0"/>
+        <line num="105" count="4" type="stmt"/>
+        <line num="106" count="4" type="stmt"/>
+        <line num="110" count="6" type="stmt"/>
+        <line num="113" count="33" type="stmt"/>
         <line num="115" count="0" type="stmt"/>
-        <line num="118" count="13" type="stmt"/>
-        <line num="119" count="13" type="stmt"/>
-        <line num="127" count="1" type="stmt"/>
-        <line num="146" count="2" type="stmt"/>
-        <line num="162" count="13" type="stmt"/>
-        <line num="164" count="13" type="cond" truecount="1" falsecount="1"/>
+        <line num="118" count="33" type="stmt"/>
+        <line num="119" count="33" type="stmt"/>
+        <line num="127" count="4" type="stmt"/>
+        <line num="146" count="4" type="stmt"/>
+        <line num="162" count="33" type="stmt"/>
+        <line num="164" count="33" type="cond" truecount="1" falsecount="1"/>
         <line num="167" count="0" type="stmt"/>
-        <line num="175" count="13" type="cond" truecount="1" falsecount="1"/>
+        <line num="175" count="33" type="cond" truecount="1" falsecount="1"/>
         <line num="176" count="0" type="stmt"/>
-        <line num="184" count="13" type="cond" truecount="1" falsecount="1"/>
+        <line num="184" count="33" type="cond" truecount="1" falsecount="1"/>
         <line num="186" count="0" type="stmt"/>
-        <line num="200" count="13" type="stmt"/>
-        <line num="206" count="2" type="stmt"/>
-        <line num="242" count="13" type="stmt"/>
-        <line num="271" count="78" type="stmt"/>
+        <line num="200" count="33" type="stmt"/>
+        <line num="206" count="5" type="stmt"/>
+        <line num="242" count="33" type="stmt"/>
+        <line num="271" count="198" type="stmt"/>
         <line num="274" count="0" type="stmt"/>
         <line num="286" count="1" type="stmt"/>
       </file>
     </package>
-    <package name="components">
-      <metrics statements="6" coveredstatements="4" conditionals="4" coveredconditionals="1" methods="2" coveredmethods="1"/>
-      <file name="Header.tsx" path="C:\Users\mroei\Documents\GitHub\MyWeewooo\components\Header.tsx">
-        <metrics statements="6" coveredstatements="4" conditionals="4" coveredconditionals="1" methods="2" coveredmethods="1"/>
-        <line num="8" count="12" type="stmt"/>
-        <line num="9" count="12" type="stmt"/>
-        <line num="11" count="12" type="stmt"/>
-        <line num="26" count="0" type="stmt"/>
-        <line num="27" count="0" type="stmt"/>
-        <line num="42" count="1" type="stmt"/>
+    <package name="components.ui">
+      <metrics statements="1" coveredstatements="1" conditionals="2" coveredconditionals="1" methods="1" coveredmethods="1"/>
+      <file name="IconSymbol.ios.tsx" path="C:\Users\mroei\Documents\GitHub\MyWeewooo\components\ui\IconSymbol.ios.tsx">
+        <metrics statements="1" coveredstatements="1" conditionals="2" coveredconditionals="1" methods="1" coveredmethods="1"/>
+        <line num="17" count="40" type="stmt"/>
       </file>
     </package>
   </project>
